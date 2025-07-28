@@ -11,14 +11,19 @@
   <style>
     body { font-family: sans-serif; max-width: 900px; margin: 2rem auto; }
     h1, p { text-align: center; }
+    .price-display { font-size: 1.5rem; font-weight: bold; text-align: center; margin: 1rem 0; }
+    .price-display .up   { color: #16c784; } /* green */
+    .price-display .down { color: #ea3943; } /* red   */
+
     table { width: 100%; border-collapse: collapse; margin: 2rem 0; }
     th, td { padding: 0.5rem; border: 1px solid #ccc; text-align: right; }
     th:first-child, td:first-child { text-align: left; }
+
     canvas { display: block; margin: 2rem auto; }
   </style>
 </head>
 <body>
-  <!-- PASSWORD GATE -->
+  <!-- ── PASSWORD GATE ─────────────────────────────────── -->
   <script>
     const pwd = prompt("Enter access password:");
     if (pwd !== "q") {
@@ -28,6 +33,7 @@
   </script>
 
   <h1>ECOMI (OMI) Investment Tracker</h1>
+  <p class="price-display" id="priceDisplay">Loading price…</p>
   <p>Last updated: <span id="lastUpdated">—</span></p>
 
   <!-- Data Table -->
@@ -50,6 +56,7 @@
   <canvas id="priceChart" width="800" height="300"></canvas>
 
   <script>
+  (async function() {
     // ── CONFIG ─────────────────────────────────────────
     const coinId      = 'ecomi';   // CoinGecko ID
     const investments = [
@@ -66,7 +73,36 @@
       return x.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
     }
 
-    // Build table & bar-chart data
+    // 1) LIVE PRICE + 24h change display
+    async function fetchPriceAndChange() {
+      try {
+        const res = await fetch(
+          'https://api.coingecko.com/api/v3/simple/price' +
+          '?ids=' + coinId +
+          '&vs_currencies=usd' +
+          '&include_24hr_change=true'
+        );
+        const data = await res.json()[coinId];
+        const price  = data.usd;
+        const change = data.usd_24h_change;
+        // format price to 6 decimals
+        const priceStr = price.toLocaleString('en-US', {
+          minimumFractionDigits: 6,
+          maximumFractionDigits: 6
+        }) + ' USD';
+        const arrow = change >= 0 ? '▲' : '▼';
+        const cls   = change >= 0 ? 'up' : 'down';
+        const pct   = Math.abs(change).toFixed(1) + '% (24h)';
+        document.getElementById('priceDisplay').innerHTML =
+          priceStr + ' <span class="' + cls + '">' + arrow + pct + '</span>';
+      } catch (e) {
+        console.error('Price fetch failed', e);
+        document.getElementById('priceDisplay').textContent =
+          'Failed to load price';
+      }
+    }
+
+    // 2) BUILD TABLE & BAR CHART STATIC DATA
     const labels      = investments.map(i => i.name);
     const breakEvenDs = investments.map(i => i.coins * i.entry);
     let   currentDs   = Array(investments.length).fill(0);
@@ -84,7 +120,7 @@
       tbody.appendChild(tr);
     });
 
-    // Bar chart of break-even vs current
+    // Bar chart
     const ctxBar = document.getElementById('investChart').getContext('2d');
     const investChart = new Chart(ctxBar, {
       type: 'bar',
@@ -98,10 +134,9 @@
       options: { responsive: true, scales: { y: { beginAtZero: true } } }
     });
 
-    // Line chart of 24h price history
+    // 3) LINE CHART OF 24h PRICE HISTORY
     const ctxLine = document.getElementById('priceChart').getContext('2d');
     let priceChart;
-
     async function loadHistory() {
       const res = await fetch(
         `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart` +
@@ -134,18 +169,25 @@
       });
     }
 
+    // 4) FETCH & UPDATE EVERYTHING
     async function updateValues() {
       try {
-        const res  = await fetch(
+        // Update timestamp
+        document.getElementById('lastUpdated')
+          .textContent = new Date().toLocaleTimeString();
+
+        // Fetch current price & 24h change
+        await fetchPriceAndChange();
+
+        // Fetch only current price for table/bar updates
+        const res = await fetch(
           `https://api.coingecko.com/api/v3/simple/price`+
           `?ids=${coinId}&vs_currencies=usd`
         );
         const data  = await res.json();
         const price = data[coinId].usd;
-        document.getElementById('lastUpdated')
-          .textContent = new Date().toLocaleTimeString();
 
-        // update table & bar data
+        // Update table & bar chart
         investments.forEach((inv, idx) => {
           const curVal = inv.coins * price;
           document.getElementById(`cur${idx}`)
@@ -155,11 +197,11 @@
         investChart.data.datasets[1].data = currentDs;
         investChart.update();
 
-        // append new point to line chart
+        // Append to line chart
         const now = Date.now();
         priceChart.data.labels.push(now);
         priceChart.data.datasets[0].data.push(price);
-        // keep last 24h (~24 points if hourly)
+        // keep last 24h only (24 points)
         if (priceChart.data.labels.length > 24) {
           priceChart.data.labels.shift();
           priceChart.data.datasets[0].data.shift();
@@ -167,16 +209,15 @@
         priceChart.update();
 
       } catch (e) {
-        console.error('Failed to fetch price', e);
+        console.error('Failed to update values', e);
       }
     }
 
-    // Wrap startup in async IIFE
-    (async function init() {
-      await loadHistory();
-      await updateValues();
-      setInterval(updateValues, 60000);
-    })();
+    // INIT SEQUENCE
+    await loadHistory();
+    await updateValues();
+    setInterval(updateValues, 60000);
+  })();
   </script>
 </body>
 </html>
