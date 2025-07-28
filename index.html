@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <title>ECOMI (OMI) Investment Tracker</title>
 
-  <!-- Chart.js + Date Adapter -->
+  <!-- Chart.js + Date adapter -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2"></script>
 
@@ -21,7 +21,7 @@
   <!-- PASSWORD GATE -->
   <script>
     const pwd = prompt("Enter access password:");
-    if (pwd !== "1") {
+    if (pwd !== "YOUR_SECRET_PASSWORD") {
       document.body.innerHTML = "<h2>🔒 Unauthorized</h2>";
       throw new Error("Invalid password");
     }
@@ -100,19 +100,16 @@
 
     // Line chart of 24h price history
     const ctxLine = document.getElementById('priceChart').getContext('2d');
-    let priceChart;  // will initialize after fetching history
+    let priceChart;
 
-    // Fetch 24h history and build line chart
     async function loadHistory() {
       const res = await fetch(
         `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart` +
-        `?vs_currency=usd&days=1&interval=minute`
+        `?vs_currency=usd&days=1&interval=hourly`
       );
       const json = await res.json();
-      // json.prices = [[timestamp_ms, price], ...]
       const times  = json.prices.map(p => p[0]);
       const prices = json.prices.map(p => p[1]);
-
       priceChart = new Chart(ctxLine, {
         type: 'line',
         data: {
@@ -137,7 +134,6 @@
       });
     }
 
-    // Fetch current price, update table/bar chart/line chart
     async function updateValues() {
       try {
         const res  = await fetch(
@@ -146,8 +142,6 @@
         );
         const data  = await res.json();
         const price = data[coinId].usd;
-
-        // timestamp
         document.getElementById('lastUpdated')
           .textContent = new Date().toLocaleTimeString();
 
@@ -165,8 +159,8 @@
         const now = Date.now();
         priceChart.data.labels.push(now);
         priceChart.data.datasets[0].data.push(price);
-        // optionally remove old points to keep last 24h only:
-        if (priceChart.data.labels.length > 1440) {
+        // keep last 24h (~24 points if hourly)
+        if (priceChart.data.labels.length > 24) {
           priceChart.data.labels.shift();
           priceChart.data.datasets[0].data.shift();
         }
@@ -177,12 +171,12 @@
       }
     }
 
-    // Initial load
-    await loadHistory();
-    await updateValues();
-    // refresh every minute
-    setInterval(updateValues, 60000);
+    // Wrap startup in async IIFE
+    (async function init() {
+      await loadHistory();
+      await updateValues();
+      setInterval(updateValues, 60000);
+    })();
   </script>
 </body>
 </html>
-
