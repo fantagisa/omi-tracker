@@ -21,7 +21,7 @@
   <!-- PASSWORD GATE -->
   <script>
     const pwd = prompt("Enter access password:");
-    if (pwd !== "YOUR_SECRET_PASSWORD") {
+    if (pwd !== "q") {
       document.body.innerHTML = "<h2>🔒 Unauthorized</h2>";
       throw new Error("Invalid password");
     }
