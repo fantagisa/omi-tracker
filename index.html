@@ -3,114 +3,151 @@
 <head>
   <meta charset="utf-8"/>
   <title>ECOMI (OMI) Investment Tracker</title>
+
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <style>
-    body { font-family: sans-serif; max-width: 800px; margin: 2rem auto }
-    h1, .price-display { text-align: center }
-    .price-display { font-size: 1.5rem; margin: 1rem 0 }
-    .up { color: #16c784 }  /* green */
-    .down { color: #ea3943 }/* red   */
-    table { width:100%; border-collapse:collapse; margin:2rem 0 }
-    th,td { padding:0.5rem; border:1px solid #ccc; text-align:right }
-    th:first-child,td:first-child { text-align:left }
-    canvas { display:block; margin:2rem auto }
+    body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; }
+    h1 { text-align: center; }
+    .price-display { 
+      font-size: 1.25rem; 
+      text-align: center; 
+      margin: 1rem 0; 
+    }
+    .price-display .up   { color: #16c784; }
+    .price-display .down { color: #ea3943; }
+
+    table { width: 100%; border-collapse: collapse; margin: 2rem 0; }
+    th, td { padding: 0.5rem; border: 1px solid #ccc; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+
+    canvas { display: block; margin: 2rem auto; }
   </style>
 </head>
 <body>
   <!-- PASSWORD GATE -->
   <script>
-    const pwd = prompt("Enter password:");
+    const pwd = prompt("Enter access password:");
     if (pwd !== "q") {
       document.body.innerHTML = "<h2>🔒 Unauthorized</h2>";
       throw new Error("Invalid password");
     }
   </script>
 
-  <h1>ECOMI (OMI) Tracker</h1>
+  <h1>ECOMI (OMI) Investment Tracker</h1>
   <div class="price-display" id="priceDisplay">Loading price…</div>
 
-  <!-- Investment Table -->
   <table>
     <thead>
-      <tr><th>Name</th><th>Coins</th><th>Break-even</th><th>Current</th></tr>
+      <tr>
+        <th>Name</th>
+        <th>Coins Owned</th>
+        <th>Break-even ($)</th>
+        <th>Current Value ($)</th>
+      </tr>
     </thead>
     <tbody id="investTable"></tbody>
   </table>
 
-  <!-- Bar Chart -->
   <canvas id="investChart" width="700" height="350"></canvas>
 
   <script>
-  (async function(){
-    const coinId = 'ecomi';
-    const investments = [
-      {name:'Villa',coins:1000000,entry:0.008},
-      {name:'Cappe',coins:1000000,entry:0.007},
-      {name:'Ciaba',coins:300000, entry:0.01},
-      {name:'Mengo',coins:500000, entry:0.004},
-      {name:'Nicoletti',coins:600000, entry:0.002},
-      {name:'Mirco',coins:5000000,entry:0.011}
-    ];
+  document.addEventListener('DOMContentLoaded', function() {
+    (async function() {
+      // ── CONFIG ─────────────────────────────────────────
+      const coinId = 'ecomi';
+      const investments = [
+        { name: 'Villa',     coins: 1000000, entry: 0.008 },
+        { name: 'Cappe',     coins: 1000000, entry: 0.007 },
+        { name: 'Ciaba',     coins:  300000, entry: 0.01  },
+        { name: 'Mengo',     coins:  500000, entry: 0.004 },
+        { name: 'Nicoletti', coins:  600000, entry: 0.002 },
+        { name: 'Mirco',     coins: 5000000, entry: 0.011 }
+      ];
+      // ──────────────────────────────────────────────────
 
-    // helper
-    const fmtUSD = x=>x.toLocaleString('en-US',{style:'currency',currency:'USD'});
+      function fmtUSD(x) {
+        return x.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+      }
 
-    // build table rows & bar datasets
-    const labels = investments.map(i=>i.name);
-    const breakEven = investments.map(i=>i.coins*i.entry);
-    let currentVals = Array(investments.length).fill(0);
+      // Build table & chart datasets
+      const labels = investments.map(i => i.name);
+      const breakEven = investments.map(i => i.coins * i.entry);
+      let currentVals = Array(investments.length).fill(0);
 
-    const tbody = document.getElementById('investTable');
-    investments.forEach((inv,idx)=>{
-      const tr = document.createElement('tr');
-      tr.innerHTML=`
-        <td>${inv.name}</td>
-        <td>${inv.coins.toLocaleString()}</td>
-        <td>${fmtUSD(inv.coins*inv.entry)}</td>
-        <td id="cur${idx}">Loading…</td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    // init Chart.js bar chart
-    const ctx = document.getElementById('investChart').getContext('2d');
-    const chart = new Chart(ctx,{type:'bar',data:{
-      labels,
-      datasets:[
-        {label:'Break-even',data:breakEven,backgroundColor:'rgba(255,159,64,0.6)'},
-        {label:'Current',    data:currentVals,backgroundColor:'rgba(54,162,235,0.6)'}
-      ]
-    },options:{responsive:true,scales:{y:{beginAtZero:true}}}});
-
-    // fetch & update function
-    async function updateAll(){
-      // 1) price + 24h change
-      const r1 = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price`+
-        `?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`
-      );
-      const d1 = await r1.json()[coinId];
-      const price = d1.usd, change = d1.usd_24h_change;
-      document.getElementById('priceDisplay').innerHTML =
-        price.toLocaleString('en-US',{minimumFractionDigits:6,maximumFractionDigits:6})
-        + ' USD '
-        + `<span class="${change>=0?'up':'down'}">`
-        + (change>=0?'▲':'▼')+Math.abs(change).toFixed(1)+'%</span>`;
-
-      // 2) update table & bar values
-      investments.forEach((inv,idx)=>{
-        const val = inv.coins * price;
-        document.getElementById(`cur${idx}`).textContent = fmtUSD(val);
-        currentVals[idx] = val;
+      // Populate HTML table
+      const tbody = document.getElementById('investTable');
+      investments.forEach((inv, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${inv.name}</td>
+          <td>${inv.coins.toLocaleString()}</td>
+          <td>${fmtUSD(inv.coins * inv.entry)}</td>
+          <td id="cur${idx}">Loading…</td>
+        `;
+        tbody.appendChild(tr);
       });
-      chart.data.datasets[1].data = currentVals;
-      chart.update();
-    }
 
-    // initial + interval
-    await updateAll();
-    setInterval(updateAll,60_000);
-  })();
+      // Initialize Chart.js bar chart
+      const ctx = document.getElementById('investChart').getContext('2d');
+      const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Break-even ($)',   data: breakEven,    backgroundColor: 'rgba(255,159,64,0.6)' },
+            { label: 'Current Value ($)', data: currentVals,  backgroundColor: 'rgba(54,162,235,0.6)' }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Fetch live price + 24h change, update UI/chart
+      async function fetchAndUpdate() {
+        try {
+          // 1) simple price + 24h change
+          const r1 = await fetch(
+            `https://api.coingecko.com/api/v3/simple/price` +
+            `?ids=${coinId}` +
+            `&vs_currencies=usd` +
+            `&include_24hr_change=true`
+          );
+          const d1 = await r1.json()[coinId];
+          const price  = d1.usd;
+          const change = d1.usd_24h_change;
+
+          // Update price display
+          const arrow = change >= 0 ? '▲' : '▼';
+          const cls   = change >= 0 ? 'up' : 'down';
+          document.getElementById('priceDisplay').innerHTML =
+            price.toLocaleString('en-US', {
+              minimumFractionDigits: 6,
+              maximumFractionDigits: 6
+            }) + ' USD ' +
+            `<span class="${cls}">${arrow}${Math.abs(change).toFixed(1)}% (24h)</span>`;
+
+          // 2) update table & chart
+          investments.forEach((inv, i) => {
+            const cur = inv.coins * price;
+            document.getElementById(`cur${i}`).textContent = fmtUSD(cur);
+            currentVals[i] = cur;
+          });
+          chart.data.datasets[1].data = currentVals;
+          chart.update();
+        } catch (err) {
+          console.error('Update failed', err);
+        }
+      }
+
+      // Initial fetch + repeat
+      await fetchAndUpdate();
+      setInterval(fetchAndUpdate, 60000);
+    })();
+  });
   </script>
 </body>
 </html>
