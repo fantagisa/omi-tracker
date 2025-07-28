@@ -1,2 +1,141 @@
-<!doctype html>
-<html><body><p>🥳 Hello world!</p></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>ECOMI (OMI) Investment Tracker</title>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; }
+    h1, p { text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin: 2rem 0; }
+    th, td { padding: 0.5rem; border: 1px solid #ccc; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    canvas { display: block; margin: 0 auto 2rem; }
+  </style>
+</head>
+<body>
+  <!-- PASSWORD GATE -->
+  <script>
+    const pwd = prompt("Enter access password:");
+    if (pwd !== "1x2") {
+      document.body.innerHTML = "<h2>🔒 Unauthorized</h2>";
+      throw new Error("Invalid password");
+    }
+  </script>
+
+  <h1>ECOMI (OMI) Investment Tracker</h1>
+  <p>Last updated: <span id="lastUpdated">—</span></p>
+
+  <!-- Data Table -->
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Coins Owned</th>
+        <th>Break-even ($)</th>
+        <th>Current Value ($)</th>
+      </tr>
+    </thead>
+    <tbody id="investTable"></tbody>
+  </table>
+
+  <!-- Chart -->
+  <canvas id="investChart" width="700" height="400"></canvas>
+
+  <script>
+    // ── CONFIG ─────────────────────────────────────────
+    const coinId = 'ecomi';   // CoinGecko ID for OMI
+    const investments = [
+      { name: 'Villa',     coins: 1000000, entry: 0.008 },
+      { name: 'Cappe',     coins: 1000000, entry: 0.007 },
+      { name: 'Ciaba',     coins:  300000, entry: 0.01  },
+      { name: 'Mengo',     coins:  500000, entry: 0.004 },
+      { name: 'Nicoletti', coins:  600000, entry: 0.002 },
+      { name: 'Mirco',     coins: 5000000, entry: 0.011 }
+    ];
+    // ──────────────────────────────────────────────────
+
+    // Format USD
+    function fmtUSD(x) {
+      return x.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    }
+
+    // Build initial table & chart data
+    const labels      = investments.map(i => i.name);
+    const breakEvenDs = investments.map(i => i.coins * i.entry);
+    let   currentDs   = Array(investments.length).fill(0);
+
+    // Populate table rows
+    const tbody = document.getElementById('investTable');
+    investments.forEach((inv, idx) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${inv.name}</td>
+        <td>${inv.coins.toLocaleString()}</td>
+        <td>${fmtUSD(inv.coins * inv.entry)}</td>
+        <td id="cur${idx}">Loading…</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // Initialize Chart.js bar chart
+    const ctx = document.getElementById('investChart').getContext('2d');
+    const investChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Break-even ($)',
+            data: breakEvenDs,
+            backgroundColor: 'rgba(255, 159, 64, 0.6)'
+          },
+          {
+            label: 'Current Value ($)',
+            data: currentDs,
+            backgroundColor: 'rgba(54, 162, 235, 0.6)'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+
+    // Fetch price & update values
+    async function updateValues() {
+      try {
+        const res  = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price` +
+          `?ids=${coinId}&vs_currencies=usd`
+        );
+        const data = await res.json();
+        const price = data[coinId].usd;
+
+        // Update timestamp
+        document.getElementById('lastUpdated')
+          .textContent = new Date().toLocaleTimeString();
+
+        // Update table and chart data
+        investments.forEach((inv, idx) => {
+          const currentVal = inv.coins * price;
+          document.getElementById(`cur${idx}`)
+            .textContent = fmtUSD(currentVal);
+          currentDs[idx] = currentVal;
+        });
+
+        investChart.data.datasets[1].data = currentDs;
+        investChart.update();
+      } catch (e) {
+        console.error('Failed to fetch price', e);
+      }
+    }
+
+    // Initial load + auto-refresh every 60 s
+    updateValues();
+    setInterval(updateValues, 60000);
+  </script>
+</body>
+</html>
